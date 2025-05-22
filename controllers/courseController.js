@@ -1,4 +1,4 @@
-const { Course, User } = require('../models');
+const { Course, User, Test, Question, Answer, Result } = require('../models');
 const { Op } = require('sequelize');
 
 const generateJoinCode = () => Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -55,4 +55,46 @@ const getCourses = async (req, res) => {
     }
 };
 
-module.exports = { createCourse, joinCourse, getCourses };
+// Delete course and all related data (only for teachers)
+const deleteCourse = async (req, res) => {
+    const courseId = req.params.id;
+
+    try {
+        if (req.user.role !== 'teacher') {
+            return res.status(403).json({ message: 'Only teachers can delete courses' });
+        }
+
+        const course = await Course.findByPk(courseId);
+        if (!course || course.teacherId !== req.user.userId) {
+            return res.status(404).json({ message: 'Course not found or unauthorized' });
+        }
+
+        const tests = await Test.findAll({ where: { courseId } });
+
+        for (const test of tests) {
+            const questions = await Question.findAll({ where: { testId: test.id } });
+
+            for (const question of questions) {
+                await Answer.destroy({ where: { questionId: question.id } });
+            }
+
+            await Question.destroy({ where: { testId: test.id } });
+            await Result.destroy({ where: { testId: test.id } });
+        }
+
+        await Test.destroy({ where: { courseId } });
+        await course.destroy();
+
+        res.status(200).json({ message: 'Course and all related data deleted successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error deleting course' });
+    }
+};
+
+module.exports = {
+    createCourse,
+    joinCourse,
+    getCourses,
+    deleteCourse
+};

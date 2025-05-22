@@ -12,4 +12,7 @@ router.post('/', authenticate, courseController.createCourse);
 // Join a course using a join code (student only)
 router.post('/join', authenticate, courseController.joinCourse);
 
+// Delete a course and all related data (teacher only)
+router.delete('/:id', authenticate, courseController.deleteCourse);
+
 module.exports = router;

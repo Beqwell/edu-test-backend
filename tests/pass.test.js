@@ -16,12 +16,12 @@ describe('Test Passing Flow', () => {
     // Create teacher and student
     await User.bulkCreate([
       {
-        username: 'teacher3',
+        username: 'teacherX',
         password: await bcrypt.hash('pass123', 10),
         role: 'teacher'
       },
       {
-        username: 'student3',
+        username: 'studentX',
         password: await bcrypt.hash('pass123', 10),
         role: 'student'
       }
@@ -29,27 +29,27 @@ describe('Test Passing Flow', () => {
 
     // Login teacher
     const tRes = await request(app).post('/api/auth/login').send({
-      username: 'teacher3',
+      username: 'teacherX',
       password: 'pass123'
     });
     teacherToken = tRes.body.token;
 
     // Login student
     const sRes = await request(app).post('/api/auth/login').send({
-      username: 'student3',
+      username: 'studentX',
       password: 'pass123'
     });
     studentToken = sRes.body.token;
 
-    // Teacher creates course
+    // Create course
     const courseRes = await request(app)
       .post('/api/courses')
       .set('Authorization', `Bearer ${teacherToken}`)
-      .send({ name: 'Chemistry' });
+      .send({ name: 'Physics' });
 
     const joinCode = courseRes.body.join_code;
 
-    // Student joins
+    // Student joins course
     await request(app)
       .post('/api/courses/join')
       .set('Authorization', `Bearer ${studentToken}`)
@@ -60,39 +60,43 @@ describe('Test Passing Flow', () => {
       .post('/api/tests')
       .set('Authorization', `Bearer ${teacherToken}`)
       .send({
-        title: 'Chem Quiz',
-        courseId: courseRes.body.id,
-        is_visible: true
+        title: 'Physics Basics',
+        courseId: courseRes.body.id
       });
 
     testId = testRes.body.id;
 
-    // Add question with one correct answer
+    // Add question with correct answer
     await request(app)
       .post(`/api/tests/${testId}/questions`)
       .set('Authorization', `Bearer ${teacherToken}`)
       .send({
-        question_text: 'What is H2O?',
-        question_type: 'one',
+        text: 'What is the speed of light?',
+        isMultiple: false,
         answers: [
-          { answer_text: 'Water', is_correct: true },
-          { answer_text: 'Oxygen', is_correct: false }
+          { text: '3 x 10^8 m/s', isCorrect: true },
+          { text: '1.5 x 10^7 m/s', isCorrect: false }
         ]
       });
+
+    // Publish the test
+    await request(app)
+      .post(`/api/tests/${testId}/publish`)
+      .set('Authorization', `Bearer ${teacherToken}`);
   });
 
-  test('GET /api/tests/:id - fetch full test structure', async () => {
+  // Check test structure
+  test('GET /api/tests/:id returns test with questions', async () => {
     const res = await request(app)
       .get(`/api/tests/${testId}`)
       .set('Authorization', `Bearer ${studentToken}`);
 
-    // Should return question and answers
     expect(res.statusCode).toBe(200);
     expect(res.body.questions.length).toBeGreaterThan(0);
   });
 
-  test('POST /api/tests/:id/pass - submit correct answer', async () => {
-    // Get test to extract question + correct answer id
+  // Submit correct answer
+  test('POST /api/tests/:id/pass returns 100% score', async () => {
     const testData = await request(app)
       .get(`/api/tests/${testId}`)
       .set('Authorization', `Bearer ${studentToken}`);
@@ -109,9 +113,8 @@ describe('Test Passing Flow', () => {
         }
       });
 
-    // Should return score = 100%
     expect(res.statusCode).toBe(200);
-    expect(res.body.score).toBe(100);
+    expect(res.body.scorePercentage).toBe(100);
   });
 
   afterAll(async () => {

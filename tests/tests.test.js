@@ -8,78 +8,90 @@ const bcrypt = require('bcrypt');
 let teacherToken;
 let studentToken;
 let courseId;
+let testId;
 
 describe('Tests API', () => {
   beforeAll(async () => {
     await sequelize.sync({ force: true, logging: false });
 
-    // Create teacher & student
+    // Create users
     await User.bulkCreate([
       {
         username: 'teacher2',
-        password: await bcrypt.hash('123456', 10),
+        password: await bcrypt.hash('pass123', 10),
         role: 'teacher'
       },
       {
         username: 'student2',
-        password: await bcrypt.hash('123456', 10),
+        password: await bcrypt.hash('pass123', 10),
         role: 'student'
       }
     ]);
 
-    // Login teacher
-    const tLogin = await request(app).post('/api/auth/login').send({
+    // Teacher login
+    const tRes = await request(app).post('/api/auth/login').send({
       username: 'teacher2',
-      password: '123456'
+      password: 'pass123'
     });
-    teacherToken = tLogin.body.token;
+    teacherToken = tRes.body.token;
 
-    // Login student
-    const sLogin = await request(app).post('/api/auth/login').send({
+    // Student login
+    const sRes = await request(app).post('/api/auth/login').send({
       username: 'student2',
-      password: '123456'
+      password: 'pass123'
     });
-    studentToken = sLogin.body.token;
+    studentToken = sRes.body.token;
 
-    // Teacher creates course
+    // Create course
     const courseRes = await request(app)
       .post('/api/courses')
       .set('Authorization', `Bearer ${teacherToken}`)
       .send({ name: 'Biology' });
 
     courseId = courseRes.body.id;
+    const joinCode = courseRes.body.join_code;
 
-    // Student joins
+    // Student joins course
     await request(app)
       .post('/api/courses/join')
       .set('Authorization', `Bearer ${studentToken}`)
-      .send({ join_code: courseRes.body.join_code });
+      .send({ join_code: joinCode });
   });
 
-  test('POST /api/tests - create test in course', async () => {
+  // Create and publish test
+  test('POST /api/tests - create and publish test in course', async () => {
     const res = await request(app)
       .post('/api/tests')
       .set('Authorization', `Bearer ${teacherToken}`)
       .send({
         title: 'Bio Final',
-        is_visible: true,
         courseId: courseId
       });
 
-    // Should return test object
+    testId = res.body.id;
+
     expect(res.statusCode).toBe(201);
-    expect(res.body.title).toBe('Bio Final');
+    expect(res.body).toHaveProperty('id');
+
+    // Publish the test
+    const publishRes = await request(app)
+      .post(`/api/tests/${testId}/publish`)
+      .set('Authorization', `Bearer ${teacherToken}`);
+
+    expect(publishRes.statusCode).toBe(200);
+    expect(publishRes.body.message).toBe('Test published');
   });
 
-  test('GET /api/tests - visible tests for student', async () => {
+  // Check visible tests for student
+  test('GET /api/tests - student sees published test', async () => {
     const res = await request(app)
       .get('/api/tests')
       .set('Authorization', `Bearer ${studentToken}`);
 
-    // Student should see the test
     expect(res.statusCode).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body[0].title).toBe('Bio Final');
+    expect(res.body.length).toBeGreaterThan(0);
+    expect(res.body.find(t => t.title === 'Bio Final')).toBeDefined();
   });
 
   afterAll(async () => {
